@@ -6,7 +6,65 @@ use serde::{Serialize, Deserialize};
 enum Forma {
     Cubo,
     Cuboide,
+    PirTriangular,
+    PirCuadrada,
     Esfera,
+}
+
+fn default_shape_data(forma: Forma) -> (Vec<[f32; 3]>, Vec<Vec<usize>>) {
+    match forma {
+        Forma::Cubo => (
+            vec![
+                [-0.5, -0.5,  0.5], [ 0.5, -0.5,  0.5], [ 0.5,  0.5,  0.5], [-0.5,  0.5,  0.5],
+                [-0.5, -0.5, -0.5], [ 0.5, -0.5, -0.5], [ 0.5,  0.5, -0.5], [-0.5,  0.5, -0.5],
+            ],
+            vec![
+                vec![0, 1, 2, 3], vec![5, 4, 7, 6], vec![4, 0, 3, 7],
+                vec![1, 5, 6, 2], vec![3, 2, 6, 7], vec![4, 5, 1, 0],
+            ],
+        ),
+        Forma::Cuboide => (
+            vec![
+                [-1.0, -0.5,  0.25], [ 1.0, -0.5,  0.25], [ 1.0,  0.5,  0.25], [-1.0,  0.5,  0.25],
+                [-1.0, -0.5, -0.25], [ 1.0, -0.5, -0.25], [ 1.0,  0.5, -0.25], [-1.0,  0.5, -0.25],
+            ],
+            vec![
+                vec![0, 1, 2, 3], vec![5, 4, 7, 6], vec![4, 0, 3, 7],
+                vec![1, 5, 6, 2], vec![3, 2, 6, 7], vec![4, 5, 1, 0],
+            ],
+        ),
+        Forma::PirTriangular => (
+            vec![
+                [0.0, 0.5, 0.0],    // apex
+                [-0.5, -0.5, 0.5],  // base 0
+                [0.5, -0.5, 0.5],   // base 1
+                [0.0, -0.5, -0.5],  // base 2
+            ],
+            vec![
+                vec![1, 2, 3],     // base
+                vec![0, 1, 2],     // side 1
+                vec![0, 2, 3],     // side 2
+                vec![0, 3, 1],     // side 3
+            ],
+        ),
+        Forma::PirCuadrada => (
+            vec![
+                [0.0, 0.5, 0.0],     // apex
+                [-0.5, -0.5, 0.5],   // base 0
+                [0.5, -0.5, 0.5],    // base 1
+                [0.5, -0.5, -0.5],   // base 2
+                [-0.5, -0.5, -0.5],  // base 3
+            ],
+            vec![
+                vec![0, 1, 2],     // side 1
+                vec![0, 2, 3],     // side 2
+                vec![0, 3, 4],     // side 3
+                vec![0, 4, 1],     // side 4
+                vec![1, 2, 3, 4],  // base
+            ],
+        ),
+        Forma::Esfera => (vec![], vec![]),
+    }
 }
 
 struct SharedState {
@@ -30,6 +88,8 @@ struct SharedState {
     project_name: String,
     shape_dirty: bool,
     nuevo_tex_size: usize,
+    shape_vertices: Vec<[f32; 3]>,
+    shape_faces: Vec<Vec<usize>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -45,17 +105,8 @@ struct ProjectData {
     cuboide_profundo: f32,
     esfera_radio: f32,
     esfera_segmentos: usize,
-}
-
-fn cuboide_config(w: f32, h: f32, d: f32) -> [(f32, f32, f32, f32, f32, f32, f32, f32); 6] {
-    [
-        (0.0, 0.0, d / 2.0,  0.0, 0.0, 0.0, w, h),
-        (0.0, 0.0, -d / 2.0, 0.0, 180.0, 0.0, w, h),
-        (-w / 2.0, 0.0, 0.0, 0.0, -90.0, 0.0, d, h),
-        (w / 2.0, 0.0, 0.0, 0.0, 90.0, 0.0, d, h),
-        (0.0, h / 2.0, 0.0, -90.0, 0.0, 0.0, w, d),
-        (0.0, -h / 2.0, 0.0, 90.0, 0.0, 0.0, w, d),
-    ]
+    shape_vertices: Vec<[f32; 3]>,
+    shape_faces: Vec<Vec<usize>>,
 }
 
 fn crear_pixeles(color: &[u8; 4], tex_size: usize, count: usize) -> Vec<Vec<u8>> {
@@ -66,8 +117,18 @@ fn crear_pixeles(color: &[u8; 4], tex_size: usize, count: usize) -> Vec<Vec<u8>>
     }).collect()
 }
 
+fn face_count(forma: Forma) -> usize {
+    match forma {
+        Forma::Esfera => 1,
+        Forma::PirTriangular => 4,
+        Forma::PirCuadrada => 5,
+        _ => 6,
+    }
+}
+
 impl SharedState {
     fn new(_colores_ini: &[[u8; 4]; 6], tex_size: usize, paleta: [[u8; 4]; 8]) -> Self {
+        let (shape_vertices, shape_faces) = default_shape_data(Forma::Cubo);
         let pixeles = crear_pixeles(&[128, 128, 128, 255], tex_size, 6);
         Self {
             forma: Forma::Cubo,
@@ -79,19 +140,20 @@ impl SharedState {
             esfera_radio: 1.0, esfera_segmentos: 24,
             project_name: String::from("mi_proyecto"),
             shape_dirty: true, nuevo_tex_size: tex_size,
+            shape_vertices, shape_faces,
         }
     }
 
     fn cambiar_forma(&mut self, nueva: Forma) {
         if self.forma == nueva { return; }
+        let (verts, faces) = default_shape_data(nueva);
         self.forma = nueva;
+        self.shape_vertices = verts;
+        self.shape_faces = faces;
         self.cara_sel = 0;
         self.shape_dirty = true;
         self.dirty = true;
-        let count = match nueva {
-            Forma::Esfera => 1,
-            _ => 6,
-        };
+        let count = face_count(nueva);
         if self.pixeles.len() != count {
             let old_count = self.pixeles.len();
             let default_color = if old_count > 0 {
@@ -136,45 +198,44 @@ fn exportar_obj(state: &SharedState) -> String {
     std::fs::create_dir_all(&dir).ok();
     match state.forma {
         Forma::Esfera => exportar_obj_esfera(state, &dir),
-        _ => exportar_obj_cubo(state, &dir),
+        _ => exportar_obj_mesh(state, &dir),
     }
 }
 
-fn exportar_obj_cubo(state: &SharedState, dir: &PathBuf) -> String {
-    let nom_caras = ["frente", "atras", "izquierda", "derecha", "arriba", "abajo"];
-    for i in 0..state.pixeles.len() {
-        let path = dir.join(format!("{}.png", nom_caras[i]));
+fn exportar_obj_mesh(state: &SharedState, dir: &PathBuf) -> String {
+    let nfaces = state.pixeles.len();
+    for i in 0..nfaces {
+        let path = dir.join(format!("cara_{}.png", i + 1));
         let img = image::RgbaImage::from_raw(state.tex_size as u32, state.tex_size as u32, state.pixeles[i].clone());
         if let Some(img) = img { img.save(&path).ok(); }
     }
     let mut mtl = String::new();
-    for i in 0..state.pixeles.len() {
-        mtl.push_str(&format!("newmtl {}\nmap_Kd {}.png\n\n", nom_caras[i], nom_caras[i]));
+    for i in 0..nfaces {
+        mtl.push_str(&format!("newmtl cara_{}\nmap_Kd cara_{}.png\n\n", i + 1, i + 1));
     }
     std::fs::write(dir.join("modelo.mtl"), &mtl).ok();
 
-    let (w, h, d) = match state.forma {
-        Forma::Cubo => (state.cubo_escala, state.cubo_escala, state.cubo_escala),
-        Forma::Cuboide => (state.cuboide_ancho, state.cuboide_alto, state.cuboide_profundo),
-        _ => (1.0, 1.0, 1.0),
-    };
-    let hw = w / 2.0; let hh = h / 2.0; let hd = d / 2.0;
-    let verts: [[f32; 3]; 8] = [
-        [-hw, -hh,  hd], [ hw, -hh,  hd], [ hw,  hh,  hd], [-hw,  hh,  hd],
-        [-hw, -hh, -hd], [ hw, -hh, -hd], [ hw,  hh, -hd], [-hw,  hh, -hd],
-    ];
-    let caras_idx: [[usize; 6]; 6] = [
-        [1,2,3, 1,3,4], [6,5,8, 6,8,7], [5,1,4, 5,4,8],
-        [2,6,7, 2,7,3], [4,3,7, 4,7,8], [5,6,2, 5,2,1],
-    ];
     let mut obj = String::new();
     obj.push_str("# Exportado de Modelador 3D\nmtllib modelo.mtl\n\n");
-    for v in &verts { obj.push_str(&format!("v {} {} {}\n", v[0], v[1], v[2])); }
+    for v in &state.shape_vertices {
+        obj.push_str(&format!("v {} {} {}\n", v[0], v[1], v[2]));
+    }
     obj.push_str("\nvt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\n\n");
-    for i in 0..6 {
-        obj.push_str(&format!("usemtl {}\n", nom_caras[i]));
-        let idx = caras_idx[i];
-        obj.push_str(&format!("f {}/1 {}/2 {}/3\nf {}/1 {}/3 {}/4\n", idx[0], idx[1], idx[2], idx[3], idx[4], idx[5]));
+    for (i, face) in state.shape_faces.iter().enumerate() {
+        obj.push_str(&format!("usemtl cara_{}\n", i + 1));
+        match face.len() {
+            3 => {
+                obj.push_str(&format!("f {}/1 {}/2 {}/3\n", face[0] + 1, face[1] + 1, face[2] + 1));
+            }
+            4 => {
+                obj.push_str(&format!(
+                    "f {}/1 {}/2 {}/3\nf {}/1 {}/3 {}/4\n",
+                    face[0] + 1, face[1] + 1, face[2] + 1,
+                    face[0] + 1, face[2] + 1, face[3] + 1,
+                ));
+            }
+            _ => {}
+        }
     }
     std::fs::write(dir.join("modelo.obj"), &obj).ok();
     format!("Exportado a: {}", dir.display())
@@ -244,6 +305,8 @@ fn exportar_proyecto(state: &SharedState) -> String {
         cuboide_profundo: state.cuboide_profundo,
         esfera_radio: state.esfera_radio,
         esfera_segmentos: state.esfera_segmentos,
+        shape_vertices: state.shape_vertices.clone(),
+        shape_faces: state.shape_faces.clone(),
     };
     let json = serde_json::to_string_pretty(&data).unwrap();
     let path = dir.join(format!("{}.json", state.project_name));
@@ -274,6 +337,8 @@ fn importar_proyecto(state: &mut SharedState, nombre: &str) -> String {
     state.cuboide_profundo = data.cuboide_profundo;
     state.esfera_radio = data.esfera_radio;
     state.esfera_segmentos = data.esfera_segmentos;
+    state.shape_vertices = data.shape_vertices;
+    state.shape_faces = data.shape_faces;
     state.project_name = nombre.to_string();
     state.cara_sel = 0;
     state.shape_dirty = true;
@@ -393,9 +458,9 @@ impl UiApp {
                 }
                 _ => {
                     ui.horizontal(|ui| {
-                        let labels = ["Frente", "Atrás", "Izq", "Der", "Arr", "Aba"];
-                        for (i, &label) in labels.iter().enumerate().take(state.pixeles.len()) {
-                            if ui.selectable_label(state.cara_sel == i, label).clicked() {
+                        for i in 0..state.pixeles.len() {
+                            let label = format!("Cara {}", i + 1);
+                            if ui.selectable_label(state.cara_sel == i, &label).clicked() {
                                 state.cara_sel = i; state.dirty = true;
                             }
                         }
@@ -560,6 +625,12 @@ impl UiApp {
                 if ui.selectable_label(state.forma == Forma::Cuboide, "Cuboide").clicked() {
                     state.cambiar_forma(Forma::Cuboide);
                 }
+                if ui.selectable_label(state.forma == Forma::PirTriangular, "Pir. Triáng.").clicked() {
+                    state.cambiar_forma(Forma::PirTriangular);
+                }
+                if ui.selectable_label(state.forma == Forma::PirCuadrada, "Pir. Cuadrada").clicked() {
+                    state.cambiar_forma(Forma::PirCuadrada);
+                }
                 if ui.selectable_label(state.forma == Forma::Esfera, "Esfera").clicked() {
                     state.cambiar_forma(Forma::Esfera);
                 }
@@ -569,14 +640,22 @@ impl UiApp {
 
             match state.forma {
                 Forma::Cubo => {
+                    let old = state.cubo_escala;
                     ui.horizontal(|ui| {
                         ui.label("Escala:");
                         if ui.button("−").clicked() { state.cubo_escala = (state.cubo_escala - 0.1).max(0.1); }
                         ui.label(format!("{:.1}", state.cubo_escala));
                         if ui.button("+").clicked() { state.cubo_escala = (state.cubo_escala + 0.1).min(5.0); }
                     });
+                    if state.cubo_escala != old {
+                        let s = state.cubo_escala / 2.0;
+                        let v = &mut state.shape_vertices;
+                        v[0] = [-s, -s,  s]; v[1] = [ s, -s,  s]; v[2] = [ s,  s,  s]; v[3] = [-s,  s,  s];
+                        v[4] = [-s, -s, -s]; v[5] = [ s, -s, -s]; v[6] = [ s,  s, -s]; v[7] = [-s,  s, -s];
+                    }
                 }
                 Forma::Cuboide => {
+                    let old = (state.cuboide_ancho, state.cuboide_alto, state.cuboide_profundo);
                     ui.horizontal(|ui| {
                         ui.label("Ancho (X):");
                         if ui.button("−").clicked() { state.cuboide_ancho = (state.cuboide_ancho - 0.1).max(0.1); }
@@ -595,6 +674,12 @@ impl UiApp {
                         ui.label(format!("{:.1}", state.cuboide_profundo));
                         if ui.button("+").clicked() { state.cuboide_profundo = (state.cuboide_profundo + 0.1).min(5.0); }
                     });
+                    if (state.cuboide_ancho, state.cuboide_alto, state.cuboide_profundo) != old {
+                        let (w, h, d) = (state.cuboide_ancho / 2.0, state.cuboide_alto / 2.0, state.cuboide_profundo / 2.0);
+                        let v = &mut state.shape_vertices;
+                        v[0] = [-w, -h,  d]; v[1] = [ w, -h,  d]; v[2] = [ w,  h,  d]; v[3] = [-w,  h,  d];
+                        v[4] = [-w, -h, -d]; v[5] = [ w, -h, -d]; v[6] = [ w,  h, -d]; v[7] = [-w,  h, -d];
+                    }
                 }
                 Forma::Esfera => {
                     ui.horizontal(|ui| {
@@ -610,6 +695,25 @@ impl UiApp {
                         if ui.button("+").clicked() { state.esfera_segmentos = (state.esfera_segmentos + 1).min(64); }
                     });
                     ui.label("Más segmentos = superficie más suave.");
+                }
+                _ => {}
+            }
+
+            if state.forma != Forma::Esfera {
+                ui.separator();
+                ui.label("Vértices (arrastrar para editar):");
+                let mut changed = false;
+                for (i, v) in state.shape_vertices.iter_mut().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("V{}:", i));
+                        changed |= ui.add(egui::DragValue::new(&mut v[0]).speed(0.01).prefix("x ")).dragged();
+                        changed |= ui.add(egui::DragValue::new(&mut v[1]).speed(0.01).prefix("y ")).dragged();
+                        changed |= ui.add(egui::DragValue::new(&mut v[2]).speed(0.01).prefix("z ")).dragged();
+                    });
+                }
+                if changed {
+                    state.shape_dirty = true;
+                    state.dirty = true;
                 }
             }
 
@@ -753,6 +857,7 @@ fn usar_kiss3d(state: Arc<Mutex<SharedState>>) {
     use kiss3d::resource::{TextureManager, Mesh};
     use kiss3d::nalgebra as na;
     use kiss3d::scene::SceneNode;
+    use kiss3d::resource::vertex_index::VertexIndex;
     use image::RgbaImage;
 
     let mut window = Window::new("Modelador 3D");
@@ -763,16 +868,10 @@ fn usar_kiss3d(state: Arc<Mutex<SharedState>>) {
 
     let mut grupo = window.add_group();
 
-    // 6 quad nodes for cube/cuboid
+    // Dynamic face nodes (rebuilt on shape change)
     let mut caras_nodos: Vec<SceneNode> = Vec::new();
-    for _ in 0..6 {
-        let nodo = grupo.add_quad(1.0, 1.0, 1, 1);
-        caras_nodos.push(nodo);
-    }
-
     // sphere node
     let mut esfera_nodo: Option<SceneNode> = None;
-
     let mut texturas: Vec<Rc<kiss3d::context::Texture>> = Vec::new();
 
     fn tex_id() -> String {
@@ -802,7 +901,6 @@ fn usar_kiss3d(state: Arc<Mutex<SharedState>>) {
 
     fn crear_esfera_mesh(radio: f32, segmentos: usize) -> Rc<RefCell<Mesh>> {
         use na::{Point2, Point3};
-        use kiss3d::resource::vertex_index::VertexIndex;
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
         let mut uvs = Vec::new();
@@ -832,14 +930,59 @@ fn usar_kiss3d(state: Arc<Mutex<SharedState>>) {
         Rc::new(RefCell::new(mesh))
     }
 
-    // Initial texture creation (cube)
+    fn crear_mesh_cara(verts: &[[f32; 3]], face: &[usize]) -> Rc<RefCell<Mesh>> {
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+        let mut uvs = Vec::new();
+        match face.len() {
+            3 => {
+                for &idx in face {
+                    let v = verts[idx];
+                    vertices.push(na::Point3::new(v[0], v[1], v[2]));
+                }
+                uvs.push(na::Point2::new(0.0, 0.0));
+                uvs.push(na::Point2::new(1.0, 0.0));
+                uvs.push(na::Point2::new(0.5, 1.0));
+                indices.push(na::Point3::new(0u32 as VertexIndex, 1, 2));
+            }
+            4 => {
+                for &idx in face {
+                    let v = verts[idx];
+                    vertices.push(na::Point3::new(v[0], v[1], v[2]));
+                }
+                uvs.push(na::Point2::new(0.0, 0.0));
+                uvs.push(na::Point2::new(1.0, 0.0));
+                uvs.push(na::Point2::new(1.0, 1.0));
+                uvs.push(na::Point2::new(0.0, 1.0));
+                indices.push(na::Point3::new(0u32 as VertexIndex, 1, 2));
+                indices.push(na::Point3::new(0u32 as VertexIndex, 2, 3));
+            }
+            _ => {}
+        }
+        let mesh = Mesh::new(vertices, indices, None, Some(uvs), false);
+        Rc::new(RefCell::new(mesh))
+    }
+
+    // Initial build
     {
         let state_ = state.lock().unwrap();
-        for i in 0..6 {
-            let tex = crear_textura(&state_.pixeles[i], state_.tex_size);
-            caras_nodos[i].set_texture(tex.clone());
-            caras_nodos[i].set_lines_color(Some(na::Point3::new(0.0, 0.0, 0.0)));
-            texturas.push(tex);
+        if state_.forma != Forma::Esfera {
+            let verts = &state_.shape_vertices;
+            for (i, face) in state_.shape_faces.iter().enumerate() {
+                let mesh = crear_mesh_cara(verts, face);
+                let mut nodo = grupo.add_mesh(mesh, na::Vector3::new(1.0, 1.0, 1.0));
+                let tex = crear_textura(&state_.pixeles[i], state_.tex_size);
+                nodo.set_texture(tex.clone());
+                nodo.set_lines_color(Some(na::Point3::new(0.0, 0.0, 0.0)));
+                caras_nodos.push(nodo);
+                texturas.push(tex);
+            }
+        } else {
+            let mesh = crear_esfera_mesh(state_.esfera_radio, state_.esfera_segmentos);
+            let mut nodo = grupo.add_mesh(mesh, na::Vector3::new(1.0, 1.0, 1.0));
+            let tex = crear_textura(&state_.pixeles[0], state_.tex_size);
+            nodo.set_texture(tex);
+            esfera_nodo = Some(nodo);
         }
     }
 
@@ -848,67 +991,35 @@ fn usar_kiss3d(state: Arc<Mutex<SharedState>>) {
     while window.render_with_camera(&mut camara) {
         let mut state_ = state.lock().unwrap();
 
-        // Handle shape changes
+        // Handle shape/vertex changes
         if state_.shape_dirty || state_.forma != prev_forma {
             let forma = state_.forma;
             match forma {
                 Forma::Esfera => {
-                    // hide cube quads
                     for nodo in &mut caras_nodos { nodo.set_visible(false); }
-                    // show/update sphere
-                    if esfera_nodo.is_none() || prev_forma != forma || state_.res_dirty {
+                    if esfera_nodo.is_none() || prev_forma != forma {
                         let mesh = crear_esfera_mesh(state_.esfera_radio, state_.esfera_segmentos);
-                        if let Some(ref mut nodo) = esfera_nodo {
-                            // replace mesh by creating a new node
-                            nodo.set_visible(false);
-                            let mut nuevo = grupo.add_mesh(mesh, na::Vector3::new(1.0, 1.0, 1.0));
-                            let tex = crear_textura(&state_.pixeles[0], state_.tex_size);
-                            nuevo.set_texture(tex);
-                            esfera_nodo = Some(nuevo);
-                        } else {
-                            let mut nuevo = grupo.add_mesh(mesh, na::Vector3::new(1.0, 1.0, 1.0));
-                            let tex = crear_textura(&state_.pixeles[0], state_.tex_size);
-                            nuevo.set_texture(tex);
-                            esfera_nodo = Some(nuevo);
-                        }
+                        let mut nuevo = grupo.add_mesh(mesh, na::Vector3::new(1.0, 1.0, 1.0));
+                        let tex = crear_textura(&state_.pixeles[0], state_.tex_size);
+                        nuevo.set_texture(tex);
+                        esfera_nodo = Some(nuevo);
                     }
                 }
                 _ => {
-                    // hide sphere
                     if let Some(ref mut nodo) = esfera_nodo { nodo.set_visible(false); }
-                    // show cube quads
-                    for nodo in &mut caras_nodos { nodo.set_visible(true); }
-
-                    // update positions/scales for cuboid
-                    let (w, h, d) = match forma {
-                        Forma::Cubo => (state_.cubo_escala, state_.cubo_escala, state_.cubo_escala),
-                        Forma::Cuboide => (state_.cuboide_ancho, state_.cuboide_alto, state_.cuboide_profundo),
-                        _ => (1.0, 1.0, 1.0),
-                    };
-                    let cfg = cuboide_config(w, h, d);
-                    for i in 0..6 {
-                        let (tx, ty, tz, rx, ry, rz, qw, qh) = cfg[i];
-                        let rad = (rx.to_radians(), ry.to_radians(), rz.to_radians());
-                        caras_nodos[i].set_local_rotation(na::UnitQuaternion::from_euler_angles(rad.0, rad.1, rad.2));
-                        caras_nodos[i].set_local_translation(na::Translation3::new(tx, ty, tz));
-                        caras_nodos[i].set_local_scale(qw, qh, 1.0);
+                    caras_nodos.clear();
+                    texturas.clear();
+                    for (i, face) in state_.shape_faces.iter().enumerate() {
+                        let mesh = crear_mesh_cara(&state_.shape_vertices, face);
+                        let mut nodo = grupo.add_mesh(mesh, na::Vector3::new(1.0, 1.0, 1.0));
+                        let tex = crear_textura(&state_.pixeles[i], state_.tex_size);
+                        nodo.set_texture(tex.clone());
+                        nodo.set_lines_color(Some(na::Point3::new(0.0, 0.0, 0.0)));
+                        caras_nodos.push(nodo);
+                        texturas.push(tex);
                     }
-
-                    // recreate textures if resolution changed
-                    if state_.res_dirty || texturas.len() != 6 {
-                        texturas.clear();
-                        for i in 0..6 {
-                            let tex = crear_textura(&state_.pixeles[i], state_.tex_size);
-                            caras_nodos[i].set_texture(tex.clone());
-                            caras_nodos[i].set_lines_color(Some(na::Point3::new(0.0, 0.0, 0.0)));
-                            texturas.push(tex);
-                        }
-                        state_.res_dirty = false;
-                        state_.dirty = false;
-                    } else if state_.dirty {
-                        for i in 0..6 { subir_textura(&texturas[i], &state_.pixeles[i], state_.tex_size); }
-                        state_.dirty = false;
-                    }
+                    state_.res_dirty = false;
+                    state_.dirty = false;
                 }
             }
             state_.shape_dirty = false;
@@ -920,26 +1031,20 @@ fn usar_kiss3d(state: Arc<Mutex<SharedState>>) {
         // Normal update for current shape
         match state_.forma {
             Forma::Esfera => {
-                    if state_.res_dirty {
-                        if let Some(ref mut nodo) = esfera_nodo {
-                            let tex = crear_textura(&state_.pixeles[0], state_.tex_size);
-                            nodo.set_texture(tex);
-                        }
-                        state_.res_dirty = false;
-                        state_.dirty = false;
-                    } else if state_.dirty {
-                        if let Some(ref mut nodo) = esfera_nodo {
-                            let tex = crear_textura(&state_.pixeles[0], state_.tex_size);
-                            nodo.set_texture(tex);
-                        }
-                        state_.dirty = false;
+                if state_.dirty || state_.res_dirty {
+                    if let Some(ref mut nodo) = esfera_nodo {
+                        let tex = crear_textura(&state_.pixeles[0], state_.tex_size);
+                        nodo.set_texture(tex);
                     }
+                    state_.res_dirty = false;
+                    state_.dirty = false;
+                }
             }
             _ => {
                 if state_.res_dirty {
                     let tex_size = state_.tex_size;
                     texturas.clear();
-                    for i in 0..6 {
+                    for i in 0..caras_nodos.len() {
                         let tex = crear_textura(&state_.pixeles[i], tex_size);
                         caras_nodos[i].set_texture(tex.clone());
                         caras_nodos[i].set_lines_color(Some(na::Point3::new(0.0, 0.0, 0.0)));
@@ -948,7 +1053,9 @@ fn usar_kiss3d(state: Arc<Mutex<SharedState>>) {
                     state_.res_dirty = false;
                     state_.dirty = false;
                 } else if state_.dirty {
-                    for i in 0..6 { subir_textura(&texturas[i], &state_.pixeles[i], state_.tex_size); }
+                    for i in 0..texturas.len() {
+                        subir_textura(&texturas[i], &state_.pixeles[i], state_.tex_size);
+                    }
                     state_.dirty = false;
                 }
             }
@@ -966,7 +1073,7 @@ fn usar_kiss3d(state: Arc<Mutex<SharedState>>) {
                 }
             }
             _ => {
-                for i in 0..6 {
+                for i in 0..caras_nodos.len() {
                     caras_nodos[i].set_lines_color(Some(if i == cara_sel {
                         na::Point3::new(1.0, 1.0, 1.0)
                     } else {
@@ -976,7 +1083,7 @@ fn usar_kiss3d(state: Arc<Mutex<SharedState>>) {
             }
         }
 
-        // Movement/rotation controls (same as before, affect whole group)
+        // Movement/rotation controls
         let v = 0.05;
         for (k, d) in [(Key::Left, [-v,0.0,0.0]), (Key::Right, [v,0.0,0.0]),
                         (Key::Up, [0.0,v,0.0]), (Key::Down, [0.0,-v,0.0]),

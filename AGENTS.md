@@ -3,11 +3,14 @@
 App en Rust para modelar y pintar assets 3D simples.
 
 ## Estado actual
-- Cubo formado por 6 caras independientes (quads)
-- Cada cara tiene textura pintable con resolución variable (8×8, 16×16, 32×32)
+- 5 formas geométricas: Cubo, Cuboide, Pirámide Triangular, Pirámide Cuadrada, Esfera
+- Cubo y Cuboide con parámetros de escala/dimensiones
+- Cada forma tiene caras independientes con textura pintable
+- Resolución de textura variable (8×8, 16×16, 32×32)
 - Ventana 3D (kiss3d) con cámara orbital
-- Ventana UI (eframe/egui) con dos pestañas: Lienzo y Avanzado
+- Ventana UI (eframe/egui) con 4 pestañas: Lienzo, Forma, Avanzado, Proyecto
 - Exportación a OBJ + PNG
+- Guardado/carga de proyectos en JSON
 
 ## Controles 3D
 - Flechas: mover X/Y
@@ -16,7 +19,7 @@ App en Rust para modelar y pintar assets 3D simples.
 - +/-: escalar
 
 ## UI - Pestaña Lienzo
-- Selector de cara (6 caras)
+- Selector de cara (cantidad variable según forma)
 - Lienzo de pintura con coordenadas del píxel bajo el mouse
 - Preview de pincel (círculo guía)
 - Pintado con clic izquierdo, pincel variable (0-8)
@@ -26,26 +29,34 @@ App en Rust para modelar y pintar assets 3D simples.
 - Botón "Limpiar cara" (rellena la cara con el color de relleno)
 - Botón "Exportar OBJ"
 
+## UI - Pestaña Forma
+- Selector de forma: Cubo, Cuboide, Pir. Triáng., Pir. Cuadrada, Esfera
+- Parámetros específicos: Escala (cubo), Ancho/Alto/Profundo (cuboide), Radio/Segmentos (esfera)
+- Editor de vértices arrastrable (para formas no-esfera)
+
 ## UI - Pestaña Avanzado
 - Selector de resolución: 8×8, 16×16, 32×32
 - Editor de colores de la paleta (8 colores editables)
 - Selector de color de relleno (usado por "Limpiar cara")
-- Scroll vertical en ambas pestañas
+- Scroll vertical en todas las pestañas
+
+## UI - Pestaña Proyecto
+- Guardar y cargar proyectos (JSON)
+- Nombre de proyecto editable
+- Lista de proyectos guardados
 
 ## Atajos
 - Teclas 1-8: seleccionar color de paleta al instante
 
 ## Arquitectura
 - `SharedState` con Arc<Mutex<>> compartido entre hilos
-- Hilo secundario: kiss3d (render 3D)
+- Hilo secundario: kiss3d (render 3D con SceneNode dinámicos)
 - Hilo principal: eframe (UI de pintura)
-- Las texturas 3D se voltean horizontalmente al subirse a GPU para coincidir con el lienzo
-- Al cambiar resolución se hace tile del contenido actual
+- Las texturas 3D se voltean horizontalmente al subirse a GPU
+- Al cambiar resolución se redimensionan los píxeles
+- Cada forma tiene vértices y caras definidos en `shape_vertices` / `shape_faces`
+- El render 3D construye mallas por cara usando `add_mesh`
+- Serialización con serde para guardar proyectos
 
 ## Dependencias
-kiss3d = "0.36", image = "0.24", egui = "0.28", eframe = "0.28"
-
-## Próximos pasos potenciales
-- Más formas geométricas
-- Pinceles, texturas desde archivo
-- Más atajos de teclado
+kiss3d = "0.36", image = "0.24", egui = "0.28", eframe = "0.28", serde, serde_json
