@@ -85,6 +85,7 @@ struct SharedState {
     cuboide_profundo: f32,
     esfera_radio: f32,
     esfera_segmentos: usize,
+    pyramid_scale: f32,
     project_name: String,
     shape_dirty: bool,
     nuevo_tex_size: usize,
@@ -105,6 +106,7 @@ struct ProjectData {
     cuboide_profundo: f32,
     esfera_radio: f32,
     esfera_segmentos: usize,
+    pyramid_scale: f32,
     shape_vertices: Vec<[f32; 3]>,
     shape_faces: Vec<Vec<usize>>,
 }
@@ -137,7 +139,7 @@ impl SharedState {
             dirty: true, mensaje: String::new(), tex_size, res_dirty: false,
             paleta, fill_color: [128, 128, 128, 255],
             cubo_escala: 1.0, cuboide_ancho: 2.0, cuboide_alto: 1.0, cuboide_profundo: 0.5,
-            esfera_radio: 1.0, esfera_segmentos: 24,
+            esfera_radio: 1.0, esfera_segmentos: 24, pyramid_scale: 1.0,
             project_name: String::from("mi_proyecto"),
             shape_dirty: true, nuevo_tex_size: tex_size,
             shape_vertices, shape_faces,
@@ -305,6 +307,7 @@ fn exportar_proyecto(state: &SharedState) -> String {
         cuboide_profundo: state.cuboide_profundo,
         esfera_radio: state.esfera_radio,
         esfera_segmentos: state.esfera_segmentos,
+        pyramid_scale: state.pyramid_scale,
         shape_vertices: state.shape_vertices.clone(),
         shape_faces: state.shape_faces.clone(),
     };
@@ -337,6 +340,7 @@ fn importar_proyecto(state: &mut SharedState, nombre: &str) -> String {
     state.cuboide_profundo = data.cuboide_profundo;
     state.esfera_radio = data.esfera_radio;
     state.esfera_segmentos = data.esfera_segmentos;
+    state.pyramid_scale = data.pyramid_scale;
     state.shape_vertices = data.shape_vertices;
     state.shape_faces = data.shape_faces;
     state.project_name = nombre.to_string();
@@ -618,21 +622,23 @@ impl UiApp {
             ui.heading("Forma geométrica");
             ui.separator();
 
+            let mut changed = false;
+
             ui.horizontal(|ui| {
                 if ui.selectable_label(state.forma == Forma::Cubo, "Cubo").clicked() {
-                    state.cambiar_forma(Forma::Cubo);
+                    state.cambiar_forma(Forma::Cubo); changed = true;
                 }
                 if ui.selectable_label(state.forma == Forma::Cuboide, "Cuboide").clicked() {
-                    state.cambiar_forma(Forma::Cuboide);
+                    state.cambiar_forma(Forma::Cuboide); changed = true;
                 }
                 if ui.selectable_label(state.forma == Forma::PirTriangular, "Pir. Triáng.").clicked() {
-                    state.cambiar_forma(Forma::PirTriangular);
+                    state.cambiar_forma(Forma::PirTriangular); changed = true;
                 }
                 if ui.selectable_label(state.forma == Forma::PirCuadrada, "Pir. Cuadrada").clicked() {
-                    state.cambiar_forma(Forma::PirCuadrada);
+                    state.cambiar_forma(Forma::PirCuadrada); changed = true;
                 }
                 if ui.selectable_label(state.forma == Forma::Esfera, "Esfera").clicked() {
-                    state.cambiar_forma(Forma::Esfera);
+                    state.cambiar_forma(Forma::Esfera); changed = true;
                 }
             });
 
@@ -644,7 +650,7 @@ impl UiApp {
                     ui.horizontal(|ui| {
                         ui.label("Escala:");
                         if ui.button("−").clicked() { state.cubo_escala = (state.cubo_escala - 0.1).max(0.1); }
-                        ui.label(format!("{:.1}", state.cubo_escala));
+                        ui.add(egui::Slider::new(&mut state.cubo_escala, 0.1..=5.0).text(""));
                         if ui.button("+").clicked() { state.cubo_escala = (state.cubo_escala + 0.1).min(5.0); }
                     });
                     if state.cubo_escala != old {
@@ -652,73 +658,70 @@ impl UiApp {
                         let v = &mut state.shape_vertices;
                         v[0] = [-s, -s,  s]; v[1] = [ s, -s,  s]; v[2] = [ s,  s,  s]; v[3] = [-s,  s,  s];
                         v[4] = [-s, -s, -s]; v[5] = [ s, -s, -s]; v[6] = [ s,  s, -s]; v[7] = [-s,  s, -s];
+                        changed = true;
                     }
                 }
                 Forma::Cuboide => {
                     let old = (state.cuboide_ancho, state.cuboide_alto, state.cuboide_profundo);
                     ui.horizontal(|ui| {
                         ui.label("Ancho (X):");
-                        if ui.button("−").clicked() { state.cuboide_ancho = (state.cuboide_ancho - 0.1).max(0.1); }
-                        ui.label(format!("{:.1}", state.cuboide_ancho));
-                        if ui.button("+").clicked() { state.cuboide_ancho = (state.cuboide_ancho + 0.1).min(5.0); }
+                        ui.add(egui::Slider::new(&mut state.cuboide_ancho, 0.1..=5.0).text(""));
                     });
                     ui.horizontal(|ui| {
                         ui.label("Alto (Y):");
-                        if ui.button("−").clicked() { state.cuboide_alto = (state.cuboide_alto - 0.1).max(0.1); }
-                        ui.label(format!("{:.1}", state.cuboide_alto));
-                        if ui.button("+").clicked() { state.cuboide_alto = (state.cuboide_alto + 0.1).min(5.0); }
+                        ui.add(egui::Slider::new(&mut state.cuboide_alto, 0.1..=5.0).text(""));
                     });
                     ui.horizontal(|ui| {
                         ui.label("Profundo (Z):");
-                        if ui.button("−").clicked() { state.cuboide_profundo = (state.cuboide_profundo - 0.1).max(0.1); }
-                        ui.label(format!("{:.1}", state.cuboide_profundo));
-                        if ui.button("+").clicked() { state.cuboide_profundo = (state.cuboide_profundo + 0.1).min(5.0); }
+                        ui.add(egui::Slider::new(&mut state.cuboide_profundo, 0.1..=5.0).text(""));
                     });
                     if (state.cuboide_ancho, state.cuboide_alto, state.cuboide_profundo) != old {
                         let (w, h, d) = (state.cuboide_ancho / 2.0, state.cuboide_alto / 2.0, state.cuboide_profundo / 2.0);
                         let v = &mut state.shape_vertices;
                         v[0] = [-w, -h,  d]; v[1] = [ w, -h,  d]; v[2] = [ w,  h,  d]; v[3] = [-w,  h,  d];
                         v[4] = [-w, -h, -d]; v[5] = [ w, -h, -d]; v[6] = [ w,  h, -d]; v[7] = [-w,  h, -d];
+                        changed = true;
+                    }
+                }
+                Forma::PirTriangular | Forma::PirCuadrada => {
+                    let old = state.pyramid_scale;
+                    ui.horizontal(|ui| {
+                        ui.label("Escala:");
+                        ui.add(egui::Slider::new(&mut state.pyramid_scale, 0.1..=5.0).text(""));
+                    });
+                    if state.pyramid_scale != old {
+                        let base = default_shape_data(state.forma);
+                        let s = state.pyramid_scale;
+                        for (i, v) in state.shape_vertices.iter_mut().enumerate() {
+                            v[0] = base.0[i][0] * s;
+                            v[1] = base.0[i][1] * s;
+                            v[2] = base.0[i][2] * s;
+                        }
+                        changed = true;
                     }
                 }
                 Forma::Esfera => {
+                    let old_r = state.esfera_radio;
+                    let old_s = state.esfera_segmentos;
                     ui.horizontal(|ui| {
                         ui.label("Radio:");
-                        if ui.button("−").clicked() { state.esfera_radio = (state.esfera_radio - 0.1).max(0.1); }
-                        ui.label(format!("{:.1}", state.esfera_radio));
-                        if ui.button("+").clicked() { state.esfera_radio = (state.esfera_radio + 0.1).min(5.0); }
+                        ui.add(egui::Slider::new(&mut state.esfera_radio, 0.1..=5.0).text(""));
                     });
                     ui.horizontal(|ui| {
                         ui.label("Segmentos:");
-                        if ui.button("−").clicked() { state.esfera_segmentos = state.esfera_segmentos.saturating_sub(1).max(8); }
-                        ui.label(state.esfera_segmentos.to_string());
-                        if ui.button("+").clicked() { state.esfera_segmentos = (state.esfera_segmentos + 1).min(64); }
+                        ui.add(egui::Slider::new(&mut state.esfera_segmentos, 8..=64).text(""));
                     });
                     ui.label("Más segmentos = superficie más suave.");
-                }
-                _ => {}
-            }
-
-            if state.forma != Forma::Esfera {
-                ui.separator();
-                ui.label("Vértices (arrastrar para editar):");
-                let mut changed = false;
-                for (i, v) in state.shape_vertices.iter_mut().enumerate() {
-                    ui.horizontal(|ui| {
-                        ui.label(format!("V{}:", i));
-                        changed |= ui.add(egui::DragValue::new(&mut v[0]).speed(0.01).prefix("x ")).dragged();
-                        changed |= ui.add(egui::DragValue::new(&mut v[1]).speed(0.01).prefix("y ")).dragged();
-                        changed |= ui.add(egui::DragValue::new(&mut v[2]).speed(0.01).prefix("z ")).dragged();
-                    });
-                }
-                if changed {
-                    state.shape_dirty = true;
-                    state.dirty = true;
+                    if state.esfera_radio != old_r || state.esfera_segmentos != old_s {
+                        changed = true;
+                    }
                 }
             }
 
-            state.shape_dirty = true;
-            state.dirty = true;
+            if changed {
+                state.shape_dirty = true;
+                state.dirty = true;
+            }
         });
     }
 
