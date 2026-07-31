@@ -1,0 +1,12 @@
+[package]
+name = "modelador3d"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kiss3d = "0.36"
+image = "0.24"
+egui = "0.28"
+eframe = "0.28"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
